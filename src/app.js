@@ -63,8 +63,6 @@ Pubsub = (function() {
 
 })();
 
-window.pubsub = new Pubsub();
-
 App = (function() {
 
   function App() {
@@ -127,7 +125,7 @@ App = (function() {
   };
 
   App.prototype.cycle = function() {
-    return pubsub.publish('raf:frame:tick');
+    return DD().pubsub("publish", "raf:frame:tick");
   };
 
   App.prototype.fullScreenOn = function() {
@@ -162,12 +160,12 @@ Event = (function() {
     this.domElem.addEventListener("mousedown", function(e) {
       _this.mousedown = true;
       _this.mouseup = false;
-      return pubsub.publish("mousedown");
+      return DD().pubsub("publish", "mousedown");
     });
     this.domElem.addEventListener("mouseup", function(e) {
       _this.mousedown = false;
       _this.mouseup = true;
-      return pubsub.publish("mouseup");
+      return DD().pubsub("publish", "mouseup");
     });
     this.domElem.addEventListener("keydown", function(e) {
       if (e.keyCode !== 116) {
@@ -176,25 +174,25 @@ Event = (function() {
       switch (e.keyCode) {
         case 38 || 90:
           _this.up = true;
-          return pubsub.publish("up");
+          return DD().pubsub("publish", "up");
         case 40 || 83:
           _this.down = true;
-          return pubsub.publish("down");
+          return DD().pubsub("publish", "down");
         case 37 || 81:
           _this.left = true;
-          return pubsub.publish("left");
+          return DD().pubsub("publish", "left");
         case 39 || 68:
           _this.right = true;
-          return pubsub.publish("right");
+          return DD().pubsub("publish", "right");
         case 32:
           _this.space = true;
-          return pubsub.publish("space");
+          return DD().pubsub("publish", "space");
         case 27:
           _this.esc = true;
-          return pubsub.publish("esc");
+          return DD().pubsub("publish", "esc");
         default:
           _this.other = true;
-          return pubsub.publish("other");
+          return DD().pubsub("publish", "other");
       }
     });
     this.domElem.addEventListener("keyup", function(e) {
@@ -241,7 +239,7 @@ Canvas = (function() {
     this.canvasId = canvasId != null ? canvasId : "canvas";
     this.w = w != null ? w : 800;
     this.h = h != null ? h : 600;
-    this.subHandler = pubsub.subscribe('raf:frame:tick', function() {
+    this.subHandler = DD().pubsub("subscribe", "raf:frame:tick", function() {
       return _this.clear();
     });
     tmpCanvas = document.getElementById(this.canvasId);
@@ -499,7 +497,7 @@ Update = (function() {
   Update.prototype.start = function() {
     var _this = this;
     this.active = true;
-    return this.subHandler = pubsub.subscribe('raf:frame:tick', function() {
+    return this.subHandler = DD().pubsub("subscribe", "raf:frame:tick", function() {
       return _this.step();
     });
   };
@@ -525,7 +523,7 @@ Update = (function() {
 
   Update.prototype.stop = function() {
     if (this.subHandler) {
-      pubsub.unsubscribe(this.subHandler);
+      DD().pubsub("unsubscribe", this.subHandler);
     }
     return this.active = false;
   };
@@ -1020,7 +1018,8 @@ Square = (function() {
 
 Node = (function() {
 
-  function Node() {
+  function Node(name) {
+    this.name = name;
     this.tile = this.texture = this.square = false;
     this;
 
@@ -1032,7 +1031,7 @@ Node = (function() {
     } else {
       this.tile.update(_plain, img);
     }
-    return this.tile;
+    return this;
   };
 
   Node.prototype.addTexture = function(_plain, img) {
@@ -1041,7 +1040,7 @@ Node = (function() {
     } else {
       this.texture.update(_plain, img);
     }
-    return this.texture;
+    return this;
   };
 
   Node.prototype.killTile = function() {
@@ -1137,6 +1136,18 @@ Node = (function() {
   };
 
   Node.prototype.addSquare = function(w, h, x, y) {
+    if (w == null) {
+      w = 0;
+    }
+    if (h == null) {
+      h = 0;
+    }
+    if (x == null) {
+      x = 0;
+    }
+    if (y == null) {
+      y = 0;
+    }
     this.square = new Square(w, h, x, y);
     return this;
   };
@@ -1279,7 +1290,7 @@ Collection = (function() {
       time = 60;
     }
     return new Update(time, expiration, (function() {
-      return typeof callback === "function" ? callback() : void 0;
+      return typeof callback === "function" ? callback(_this) : void 0;
     }));
   };
 
@@ -1287,53 +1298,55 @@ Collection = (function() {
     return name.stop();
   };
 
-  Collection.prototype.squareCollision = function(square, callback) {
-    var trash,
-      _this = this;
-    trash = new Collection();
-    this.col.forEach(function(obj) {
+  Collection.prototype.squareCollision = function(node, callback) {
+    var _this = this;
+    if (!node || !node.square) {
+      return this;
+    }
+    return this.col.forEach(function(obj) {
       var _ref;
-      if (obj != null ? (_ref = obj.square) != null ? _ref.sqCollision(square) : void 0 : void 0) {
-        trash.add(obj);
-        return callback(obj);
+      if (obj != null ? (_ref = obj.square) != null ? _ref.sqCollision(node.square) : void 0 : void 0) {
+        return callback(obj, _this);
       }
     });
-    return this.extract(trash);
   };
 
   Collection.prototype.each = function(callback) {
     var _this = this;
     return this.col.forEach(function(obj) {
-      return callback(obj);
+      return callback(obj, _this);
     });
   };
 
-  Collection.prototype.extract = function(c) {
-    var elem, src, _i, _len, _ref, _results;
+  Collection.prototype.emptyTrash = function(c) {
+    var elem, src, _i, _j, _len, _len1, _ref, _ref1;
+    if (c == null) {
+      c = this._trash;
+    }
+    if (!this._trash) {
+      return this;
+    }
     _ref = c.col;
-    _results = [];
     for (_i = 0, _len = _ref.length; _i < _len; _i++) {
       elem = _ref[_i];
-      _results.push((function() {
-        var _j, _len1, _ref1, _results1;
-        _ref1 = this.col;
-        _results1 = [];
-        for (_j = 0, _len1 = _ref1.length; _j < _len1; _j++) {
-          src = _ref1[_j];
-          if (src === elem) {
-            _results1.push(this.trash(src));
-          } else {
-            _results1.push(void 0);
-          }
+      _ref1 = this.col;
+      for (_j = 0, _len1 = _ref1.length; _j < _len1; _j++) {
+        src = _ref1[_j];
+        if (src === elem) {
+          this.trash(src);
         }
-        return _results1;
-      }).call(this));
+      }
     }
-    return _results;
+    c.killAll();
+    return this;
   };
 
-  Collection.prototype.emptyCol = function() {
-    return this.col = [];
+  Collection.prototype.addToTrash = function(elem) {
+    var _ref;
+    if (!this._trash) {
+      this._trash = new Collection();
+    }
+    return (_ref = this._trash) != null ? _ref.add(elem) : void 0;
   };
 
   Collection.prototype.killAll = function() {
@@ -1407,3 +1420,291 @@ Reader = (function() {
   return Reader;
 
 })();
+
+(function(document) {
+  var DD, buildNode, getArg, getObj, strictGetObj, _cycleRunning, _ddCol, _ddEvents, _global, _name, _oldDD, _pubsub;
+  _name = "2dGameLib";
+  _global = this;
+  _oldDD = _global.DD;
+  _ddCol = {};
+  _ddEvents = {};
+  _pubsub = new Pubsub();
+  _cycleRunning = false;
+  DD = (function() {
+
+    function DD() {
+      var arg, dd, _i, _len;
+      if (this === window) {
+        dd = new DD();
+        DD.apply(dd, arguments);
+        return dd;
+      }
+      this._e = [];
+      for (_i = 0, _len = arguments.length; _i < _len; _i++) {
+        arg = arguments[_i];
+        this._e.push(getObj(arg));
+      }
+      this;
+
+    }
+
+    DD.prototype.addSquare = function(x, y, w, h) {
+      var elem, _i, _len, _ref;
+      _ref = this._e;
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        elem = _ref[_i];
+        elem.addSquare(x, y, w, h);
+      }
+      return this;
+    };
+
+    DD.prototype.logList = function() {
+      var elem, _i, _len, _ref;
+      _ref = this._e;
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        elem = _ref[_i];
+        console.log(elem);
+      }
+      console.log(_ddCol);
+      return this;
+    };
+
+    DD.prototype.each = function(callback) {
+      var elem, _i, _len, _ref;
+      if (!callback) {
+        return DD;
+      }
+      _ref = this._e;
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        elem = _ref[_i];
+        callback(elem);
+      }
+      return this;
+    };
+
+    DD.prototype.first = function() {
+      return this._e[0];
+    };
+
+    DD.prototype.all = function() {
+      var key;
+      this._e = [];
+      for (key in _ddCol) {
+        this._e.push(_ddCol[key]);
+      }
+      return this;
+    };
+
+    DD.prototype.kill = function() {
+      var elem, tmp, _i, _len, _ref;
+      _ref = this._e;
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        elem = _ref[_i];
+        tmp = strictGetObj(elem.name);
+        if (tmp) {
+          tmp.kill();
+          delete _ddCol[elem.name];
+        }
+      }
+      return this;
+    };
+
+    DD.prototype.extend = function(name, value) {
+      this._e[name] = value;
+      return this;
+    };
+
+    DD.prototype.addTexture = function(_plain, imgName) {
+      var elem, _i, _len, _ref;
+      _ref = this._e;
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        elem = _ref[_i];
+        elem.addTexture(_plain, this.getImage(imgName));
+      }
+      return this;
+    };
+
+    DD.prototype.addTile = function(_plain, imgName) {
+      var elem, _i, _len, _ref;
+      _ref = this._e;
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        elem = _ref[_i];
+        elem.addTile(_plain, this.getImage(imgName));
+      }
+      return this;
+    };
+
+    DD.prototype.animateTexture = function(x, y, speed, expiration) {
+      var elem, _i, _len, _ref;
+      _ref = this._e;
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        elem = _ref[_i];
+        elem.animateTexture(x, y, speed, expiration);
+      }
+      return this;
+    };
+
+    DD.prototype.animateTile = function(from, to, circular, frameRate, expiration, callback) {
+      var elem, _i, _len, _ref;
+      _ref = this._e;
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        elem = _ref[_i];
+        elem.animateTile(from, to, circular, frameRate, expiration, callback);
+      }
+      return this;
+    };
+
+    DD.prototype.drawTexture = function(canvas) {
+      var elem, tmp, _i, _len, _ref;
+      tmp = getArg(canvas);
+      _ref = this._e;
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        elem = _ref[_i];
+        elem.drawTexture(null, null, tmp[0]);
+      }
+      return this;
+    };
+
+    DD.prototype.drawTile = function(canvas) {
+      var elem, tmp, _i, _len, _ref;
+      tmp = getArg(canvas);
+      _ref = this._e;
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        elem = _ref[_i];
+        console.log(tmp, elem);
+        elem.drawTile(null, null, tmp[0]);
+      }
+      return this;
+    };
+
+    DD.prototype.slideTo = function(x, y, speed) {
+      var elem, _i, _len, _ref;
+      _ref = this._e;
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        elem = _ref[_i];
+        elem.slideTo(x, y, speed);
+      }
+      return this;
+    };
+
+    DD.prototype.loadImages = function(collection, callback) {
+      this.loadImage(collection, callback, 0);
+      return this;
+    };
+
+    DD.prototype.loadImage = function(collection, callback, index) {
+      var _this = this;
+      _ddCol[collection[index].name] = new Img(this, collection[index].src, function() {
+        if (collection[++index]) {
+          return _this.loadImage(collection, callback, index);
+        } else {
+          return callback();
+        }
+      });
+      return this;
+    };
+
+    DD.prototype.getImage = function(imgName) {
+      return _ddCol[imgName];
+    };
+
+    DD.prototype.canvas = function(name) {
+      var tmp;
+      tmp = strictGetObj(name);
+      if (tmp !== void 0) {
+        this._e.push(tmp);
+        return this;
+      }
+      _ddCol[name] = new Canvas;
+      this._e.push(_ddCol[name]);
+      return this;
+    };
+
+    DD.prototype.pubsub = function(type, name, callback) {
+      if (type === "publish") {
+        return _pubsub.publish(name);
+      } else if (type === "subscribe") {
+        return _pubsub.subscribe(name, callback);
+      } else if (type === "unsubscribe") {
+        return _pubsub.unsubscribe(name);
+      }
+      return this;
+    };
+
+    DD.prototype.startCycle = function(isStats) {
+      var anim, stats,
+        _this = this;
+      if (isStats == null) {
+        isStats = false;
+      }
+      _cycleRunning = true;
+      if (isStats) {
+        stats = new Stats();
+        stats.setMode(0);
+        stats.domElement.style.position = "absolute";
+        stats.domElement.style.left = "0px";
+        stats.domElement.style.top = "0px";
+        document.body.appendChild(stats.domElement);
+      }
+      anim = function() {
+        if (isStats) {
+          stats.begin();
+        }
+        if (_cycleRunning) {
+          requestAnimFrame(anim);
+        }
+        DD().pubsub("publish", "raf:frame:tick");
+        if (isStats) {
+          return stats.end();
+        }
+      };
+      anim();
+      return this;
+    };
+
+    DD.prototype.stopCycle = function() {
+      _cycleRunning = false;
+      return this;
+    };
+
+    DD.prototype.createEvent = function(name, domElem, en) {
+      _ddEvents[name] = new Event(domElem, en);
+      _ddEvents[name];
+      return this;
+    };
+
+    return DD;
+
+  })();
+  buildNode = function(name) {
+    var node;
+    node = new Node(name);
+    _ddCol[name] = node;
+    return node;
+  };
+  getObj = function(name) {
+    if (_ddCol[name]) {
+      return _ddCol[name];
+    } else {
+      return buildNode(name);
+    }
+  };
+  strictGetObj = function(name) {
+    return _ddCol[name];
+  };
+  getArg = function(arg) {
+    var elem, ret, _i, _len, _ref;
+    ret = [];
+    if (arg instanceof DD) {
+      _ref = arg._e;
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        elem = _ref[_i];
+        ret.push(elem);
+      }
+    } else {
+      ret.push(arg);
+    }
+    return ret;
+  };
+  return _global.DD = _global[_name] = DD;
+})(document);
