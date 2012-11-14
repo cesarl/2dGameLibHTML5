@@ -27,49 +27,8 @@ class Pubsub
             if obj.callback is handle.callback then @cache[name].splice i, 1
 
 class App
-    constructor: ->
-        @canvas = new Canvas @
-        @images = {}
-        @cycleRunning = false
-    loadImages: (collection, callback) ->
-        @loadImage collection, 0, callback
-
-    loadImage: (collection, index, callback) ->
-        @[collection[index].name] = new Img @, collection[index].src, => if collection[++index] then @loadImage(collection, index, callback) else callback()
-    startCycle: (isStats = false) ->
-        @cycleRunning = true
-        if isStats
-            stats = new Stats()
-            stats.setMode 0
-            stats.domElement.style.position = "absolute"
-            stats.domElement.style.left = "0px"
-            stats.domElement.style.top = "0px"
-            document.body.appendChild stats.domElement
-        if @anim is true then return true
-        @anim = true
-        anim = =>
-            if isStats then stats.begin();
-            if @cycleRunning then requestAnimFrame(anim)
-            @cycle()
-            if isStats then stats.end();
-        anim()
     stopCycle: ->
         @cycleRunning = false
-    cycle: ->
-        DD().pubsub("publish", "raf:frame:tick")
-    fullScreenOn: ->
-        @canvas.canvas.style.height = window.innerHeight + 'px';
-        @_resizeFullScreenFn = =>
-            @canvas.canvas.style.height = window.innerHeight + 'px';
-        window.addEventListener "resize", @_resizeFullScreenFn, false
-        @
-
-    fullScreenOff: ->
-        @canvas.canvas.style.height = @canvas.canvas.h + 'px';
-        @canvas.canvas.style.width = @canvas.canvas.w + 'px';
-        window.removeEventListener "resize", @_resizeFullScreenFn, false
-        console.log("coucou")
-        @
 
 class Event
     constructor: (@domElem = window, @en = false) ->
@@ -77,22 +36,22 @@ class Event
         @domElem.addEventListener "mousedown", (e) =>
             @mousedown = true
             @mouseup = false
-            DD().pubsub("publish", "mousedown")
+            DD.publish("mousedown")
         @domElem.addEventListener "mouseup", (e) =>
             @mousedown = false
             @mouseup = true
-            DD().pubsub("publish", "mouseup")
+            DD.publish("mouseup")
         @domElem.addEventListener "keydown", (e) =>
             if e.keyCode isnt 116
                     e.preventDefault()
             switch e.keyCode
-                when 38 or 90 then @up = true; DD().pubsub("publish", "up")
-                when 40 or 83 then @down = true; DD().pubsub("publish", "down")
-                when 37 or 81 then @left = true; DD().pubsub("publish", "left")
-                when 39 or 68 then @right = true; DD().pubsub("publish", "right")
-                when 32 then @space = true; DD().pubsub("publish", "space")
-                when 27 then @esc = true; DD().pubsub("publish", "esc")
-                else @other = true; DD().pubsub("publish", "other")
+                when 38 or 90 then @up = true; DD.publish("up")
+                when 40 or 83 then @down = true; DD.publish("down")
+                when 37 or 81 then @left = true; DD.publish("left")
+                when 39 or 68 then @right = true; DD.publish("right")
+                when 32 then @space = true; DD.publish("space")
+                when 27 then @esc = true; DD.publish("esc")
+                else @other = true; DD.publish("other")
         @domElem.addEventListener "keyup", (e) =>
             e.preventDefault() if e.keyCode isnt 116
             switch e.keyCode
@@ -107,8 +66,8 @@ class Event
         if @[touch] then @[touch] else false
 
 class Canvas
-    constructor: (@app, @canvasId = "canvas", @w = 800, @h = 600) ->
-        @subHandler = DD().pubsub("subscribe", "raf:frame:tick", => @clear())
+    constructor: (@canvasId = "canvas", @w = 800, @h = 600) ->
+        @subHandler = DD.subscribe("raf:frame:tick", => @clear())
         tmpCanvas = document.getElementById @canvasId
         if tmpCanvas then @canvas = tmpCanvas else
             @canvas = document.createElement("canvas")
@@ -132,6 +91,7 @@ class Canvas
     setSize: (@w = @w, @h = @h) ->
         @canvas.width = @w
         @canvas.height = @h
+        @
     clear: (x = 0, y = 0, w = @w, h = @h) ->
         if @clrAll then @ctx.clearRect x, y, w, h
     setFillStyle: (@fillStyle = @fillStyle) ->
@@ -206,10 +166,20 @@ class Canvas
         @zoomAnimation = new Update(1, speed, (() => @updateZoomAnimation()), (() => callback?()))
     updateZoomAnimation: () ->
         @z += @vecZ
-
+    fullScreen: (active = true) ->
+        if active
+            @canvas.style.height = window.innerHeight + 'px';
+            @_resizeFullScreenFn = =>
+                @canvas.style.height = window.innerHeight + 'px';
+            window.addEventListener "resize", @_resizeFullScreenFn, false
+        else
+            @canvas.style.height = @canvas.h + 'px';
+            @canvas.style.width = @canvas.w + 'px';
+            window.removeEventListener "resize", @_resizeFullScreenFn, false
+        @
 
 class Img
-    constructor: (@app, @src, callback, args...) ->
+    constructor: (src, callback, args...) ->
         img = new Image()
         if src then img.src = src else img.src = "missing.png"
         img.addEventListener "load", (e) =>
@@ -226,7 +196,7 @@ class Update
         @
     start: ->
         @active = true
-        @subHandler = DD().pubsub("subscribe", "raf:frame:tick", => @step())
+        @subHandler = DD.subscribe("raf:frame:tick", => @step())
     step: ->
         @elapsed++
         @totalElapsed += @elapsed
@@ -239,18 +209,8 @@ class Update
             @ended = true
             @stop()
     stop: ->
-        if @subHandler then DD().pubsub("unsubscribe", @subHandler)
+        if @subHandler then DD.unsubscribe(@subHandler)
         @active = false
-
-class Id
-    constructor: () ->
-        newDate = new Date;
-        partOne = newDate.getTime()
-        partTwo = 1 + (Math.random()*32767) >> 0
-        partThree = 1 + (Math.random()*32767) >> 0
-        @id = partOne + '-' + partTwo + '-' + partThree
-    get: () ->
-        @id
 
 class Tile
     constructor: (@_plain, @img) ->
@@ -530,13 +490,13 @@ class Node
     addSquare: (w = 0, h = 0, x = 0, y = 0) ->
         @square = new Square w, h, x, y
         @
-    drawTile: (tile = @tile, square = @square, canvas) ->
-        @_drawTile = new Update(1, -1, (() => @drawImgSquare(tile, square, canvas)))
+    drawTile: (canvas, tile = @tile, square = @square) ->
+        @_drawTile = new Update(1, -1, (() => @drawImgSquare(canvas, tile, square)))
         @
-    drawTexture: (texture = @texture, square = @square, canvas) ->
-        @_drawTexture = new Update(1, -1, (() => @drawImgColSquare(texture, square, canvas)))
+    drawTexture: (canvas, texture = @texture, square = @square) ->
+        @_drawTexture = new Update(1, -1, (() => @drawImgColSquare(canvas, texture, square)))
         @
-    drawImgColSquare: (texture, square, canvas) ->
+    drawImgColSquare: (canvas, texture, square) ->
         i = 0
         col = texture.col
         while (col[i])
@@ -548,7 +508,7 @@ class Node
                 )
             i++
         @
-    drawImgSquare: (tile, square, canvas) ->
+    drawImgSquare: (canvas, tile, square) ->
         canvas.printImg(tile.img,
                 square.x, square.y,
                 tile.stretchW or tile.coords[tile.frameIndex].w,
@@ -582,7 +542,7 @@ class Node
         @square?.unfollow()
         @
 class Collection
-    constructor: () ->
+    constructor: (@name) ->
         @col = []
         @
     add: (objects...) ->
@@ -644,173 +604,117 @@ class Reader
     _name = "2dGameLib"
     _global = @
     _oldDD = _global.DD
-    _ddCol = {}
-    _ddEvents = {}
-    _pubsub = new Pubsub()
+
     _cycleRunning = false
+    _pubsub = new Pubsub()
 
-########################################
-#  Prototype functions
-########################################
+    COL_node = {}
+    COL_img = {}
+    COL_ctx = {}
+    COL_evt = {}
+    COL_col = {}
 
-    class DD
-        constructor: () ->
-            if @ is window
-                dd = new DD()
-                DD.apply dd, arguments
-                return dd
-            @_e = []
-            for arg in arguments
-                @_e.push getObj(arg)
-            @
-        addSquare: (x, y, w, h) ->
-            for elem in @_e
-                elem.addSquare x, y, w, h
-            @
-        logList: () ->
-            for elem in @_e
-                console.log elem
-            console.log _ddCol
-            @
-        each: (callback) ->
-            if not callback then return DD
-            for elem in @_e
-                callback elem
-            @
-        first: () ->
-            @_e[0]
-        all: () ->
-            @_e = []
-            for key of _ddCol
-                @_e.push _ddCol[key]
-            @
-        kill: () ->
-            for elem in @_e
-                tmp = strictGetObj(elem.name)
-                if tmp
-                    tmp.kill()
-                    delete _ddCol[elem.name]
-            @
-        extend: (name, value) ->
-            @_e[name] = value
-            @
-        addTexture: (_plain, imgName) ->
-            for elem in @_e
-                elem.addTexture(_plain, @getImage(imgName))
-            @
-        addTile: (_plain, imgName) ->
-            for elem in @_e
-                elem.addTile(_plain, @getImage(imgName))
-            @
-        animateTexture: (x, y, speed, expiration) ->
-            for elem in @_e
-                elem.animateTexture x, y, speed, expiration
-            @
-        animateTile: (from, to, circular, frameRate, expiration, callback) ->
-            for elem in @_e
-                elem.animateTile from, to, circular, frameRate, expiration, callback
-            @
-        drawTexture: (canvas) ->
-            tmp = getArg(canvas)
-            for elem in @_e
-                elem.drawTexture null, null, tmp[0]
-            @
-        drawTile: (canvas) ->
-            tmp = getArg(canvas)
-            for elem in @_e
-                console.log tmp, elem
-                elem.drawTile null, null, tmp[0]
-            @
-        slideTo: (x, y, speed) ->
-            for elem in @_e
-                elem.slideTo x, y, speed
-            @
 
-####################
-# images
-        loadImages: (collection, callback) ->
-            @loadImage collection, callback, 0
-            @
-        loadImage: (collection, callback, index) ->
-            _ddCol[collection[index].name] =
-                new Img @, collection[index].src,
-                => if collection[++index] then @loadImage(collection, callback, index) else callback()
-            @
-        getImage: (imgName) ->
-            _ddCol[imgName]
-###################
-# canvas
 
-        canvas: (name) ->
-            tmp = strictGetObj(name)
-            if tmp isnt undefined
-                @_e.push(tmp)
-                return @
-            _ddCol[name] = new Canvas
-            @_e.push(_ddCol[name])
-            @
 
-##################
-# pubsub
-
-        pubsub: (type, name, callback) ->
-            if type is "publish"
-                return _pubsub.publish name
-            else if type is "subscribe"
-                return _pubsub.subscribe name, callback
-            else if type is "unsubscribe"
-                return _pubsub.unsubscribe name
-            @
-
-#################
-# cycle
-
-        startCycle: (isStats = false) ->
-            _cycleRunning = true
-            if isStats
-                stats = new Stats()
-                stats.setMode 0
-                stats.domElement.style.position = "absolute"
-                stats.domElement.style.left = "0px"
-                stats.domElement.style.top = "0px"
-                document.body.appendChild stats.domElement
-            anim = =>
-                if isStats then stats.begin();
-                if _cycleRunning then requestAnimFrame(anim)
-                DD().pubsub("publish", "raf:frame:tick")
-                if isStats then stats.end();
-            anim()
-            @
-        stopCycle: ->
-            _cycleRunning = false
-            @
-#################
-# events
-        createEvent: (name, domElem, en) ->
-            _ddEvents[name] = new Event domElem, en
-            _ddEvents[name]
-            @
-
-########################################
-#  Private functions
-########################################
-
-    buildNode = (name) ->
-        node = new Node name
-        _ddCol[name] = node
-        return node
-    getObj = (name) ->
-        if _ddCol[name] then _ddCol[name] else buildNode(name)
-    strictGetObj = (name) ->
-        _ddCol[name]
-    getArg = (arg) ->
-        ret = []
-        if arg instanceof DD
-            for elem in arg._e
-                ret.push elem
+    parseSelectors = (sel, params) ->
+        sel = sel.split(" ").join("")
+        sel = sel.split(",")
+        if sel.len > 1
+            return filterSelectorsCollection(sel, params)
         else
-            ret.push arg
-        return ret
+            return filterSelector(sel[0], params)
+    filterSelectorsCollection = (sel, params) ->
+        console.log "filterSelectorsCollection", sel, sel.length
+        sel
+    filterSelector = (sel, params) ->
+        l = sel[0]
+        sel = sel.slice(1, sel.length)
+        if l is '!'
+            gsCtx(sel, params)
+        else if l is '^'
+            gsEvt(sel, params)
+        else if l is '.'
+            gsNode(sel, params)
+        else if l is '@'
+            gImg(sel, params)
+        else if l is '#'
+            gsCol(sel, params)
 
-    _global.DD = _global[_name] = DD
+
+
+    #
+    # DD("!name", ["canvasId", 500, 600])
+    #
+    gsCtx = (name, params) ->
+        if not COL_ctx[name]
+            COL_ctx[name] = new Canvas();
+            Canvas.apply(COL_ctx[name], params)
+        COL_ctx[name]
+    gsEvt = (name, params) ->
+        if not COL_evt[name]
+            COL_evt[name] = new Event();
+            Event.apply(COL_evt[name], params)
+        COL_evt[name]
+    gsNode = (name, params) ->
+        if not COL_node[name]
+            COL_node[name] = new Node(name);
+        COL_node[name]
+    gImg = (name, params) ->
+        COL_img[name]
+    gsCol = (name, params) ->
+        if not COL_col[name]
+            COL_col[name] = new Collection(name);
+        COL_col[name]
+
+
+    cycle = ->
+        DD.publish("raf:frame:tick")
+
+
+    facade = (selectors, params) ->
+        p = Array.prototype.slice.call(arguments);
+        p.splice 0, 1
+        if @ isnt document then return facade.selector(selectors, p)
+        return facade
+
+    ####### loadImages
+    facade.loadImages = (collection, callback) ->
+        facade.loadImage collection, 0, callback
+    ####### loadImage
+    facade.loadImage = (collection, index, callback) ->
+        COL_img[collection[index].name] = new Img collection[index].src, => if collection[++index] then facade.loadImage(collection, index, callback) else callback()
+    ####### startCycle
+    facade.startCycle = (isStats = false) ->
+        _cycleRunning = true
+        if isStats
+            stats = new Stats()
+            stats.setMode 0
+            stats.domElement.style.position = "absolute"
+            stats.domElement.style.left = "0px"
+            stats.domElement.style.top = "0px"
+            document.body.appendChild stats.domElement
+        anim = =>
+            if isStats then stats.begin();
+            if _cycleRunning then requestAnimFrame(anim)
+            cycle()
+            if isStats then stats.end();
+        anim()
+    ######## pubsub
+    facade.subscribe = -> _pubsub.subscribe.apply(_pubsub, arguments)
+    facade.publish = -> _pubsub.publish.apply(_pubsub, arguments)
+    facade.unsubscribe = -> _pubsub.unsubscribe.apply(_pubsub, arguments)
+    ######## selector
+    facade.selector = (selectors, params) ->
+        if selectors and typeof selectors is "string" then return parseSelectors(selectors, params)
+    ######## kill
+    facade.kill = (selectors) ->
+        if selectors and typeof selectors is "string"
+            col = parseSelectors(selectors)
+            console.log col
+    ######## newNode
+    facade.newNode = () ->
+        new Node()
+
+    _global.DD = _global[_name] = facade
 )(document)

@@ -182,101 +182,67 @@
     partW: 70,
     partH: 74}
 
-    app = new App()
-    app.event = new Event()
-    app.startCycle(true)
-    app.fullScreenOn()
-    app.canvas = new Canvas app, "canvas", 800, 600
-
-
+    DD.startCycle(true)
+    DD("^mainEvent", window)
+    DD("!canvas", "canvas", 800, 600).fullScreen()
     childhood = () ->
         @
     childhood.start = () ->
-        @earth = new Node()
-        @earth.addSquare 0, 0, 0, 500
-        @earth.addTexture earth_tile, app.decor
-        @earth.animateTexture 5, 0, 1, -1
+        DD(".sky").addSquare(0, 0, 0, 0).addTexture(sky_tile, DD("@decor")).animateTexture(2, 0, 1, -1).drawTexture DD("!canvas")
+        DD(".btree").addSquare(0, 0, 0, 175).addTexture(big_tree_tile, DD("@decor")).animateTexture(3, 0, 1, -1).drawTexture DD("!canvas")
+        DD(".ltree").addSquare(0, 0, 0, 353).addTexture(little_tree_tile, DD("@decor")).animateTexture(4, 0, 1, -1).drawTexture DD("!canvas")
+        DD(".earth").addSquare(0, 0, 0, 500).addTexture(earth_tile, DD("@decor")).animateTexture(5, 0, 1, -1).drawTexture DD("!canvas")
 
-        @sky = new Node()
-        @sky.addSquare 0, 0, 0, 0
-        @sky.addTexture sky_tile, app.decor
-        @sky.animateTexture 2, 0, 1, -1
-
-        @btree = new Node()
-        @btree.addSquare 0, 0, 0, 175
-        @btree.addTexture big_tree_tile, app.decor
-        @btree.animateTexture 3, 0, 1, -1
-
-        @ltree = new Node()
-        @ltree.addSquare 0, 0, 0, 353
-        @ltree.addTexture little_tree_tile, app.decor
-        @ltree.animateTexture 4, 0, 1, -1
-
-        @sky.drawTexture null, null, app.canvas
-        @btree.drawTexture null, null, app.canvas
-        @ltree.drawTexture null, null, app.canvas
-        @earth.drawTexture null, null, app.canvas
-
-
-        @col = new Collection()
-        @col._spawn = @col.addCycle 100, -1, =>
-            node = new Node()
-            node.addSquare 22, 27, 800, 250 + Math.floor(Math.random() * 250)
-            node.addTile butterfly_tile, app.img
-            node.animateTile 0, 1, false, 4, -1
-            node.drawTile null, null, app.canvas
-            @col.add(node)
+        DD("#butterfly")._spawn = DD("#butterfly").addCycle 100, -1, =>
+            node = DD.newNode()
+                .addSquare(22, 27, 800, 250 + Math.floor(Math.random() * 250))
+                .addTile(butterfly_tile, DD("@img"))
+                .animateTile(0, 1, false, 4, -1)
+                .drawTile(DD("!canvas"))
+            DD("#butterfly").add(node)
     childhood.childArrive = () ->
-        @child = new Node()
-        @child.addSquare 50, 50, -10, -110
-        @child.addTile child_tile, app.img
-        @child.animateTile 0, 6, false, 4, -1
-        @child.slideTo 100, 450, 20, =>
-            @child._jumpYGravity = 1
-            @child._jump = pubsub.subscribe("up",
-                => @child.animateTile(7, 11, true, 4, -1)
-                .jumpY(-20, @child._jumpYGravity, =>
-                    @child.animateTile 0, 6, false, 4, -1
+        DD(".child").addSquare(50, 50, -10, -110).addTile(child_tile, DD("@img")).animateTile(0, 6, false, 4, -1)
+        DD(".child").slideTo 100, 450, 20, =>
+            DD(".child")._jumpYGravity = 1
+            DD(".child")._jump = DD.subscribe("up",
+                => DD(".child").animateTile(7, 11, true, 4, -1)
+                .jumpY(-20, DD(".child")._jumpYGravity, =>
+                    DD(".child").animateTile 0, 6, false, 4, -1
                 )
             )
-        @child.drawTile null, null, app.canvas
-        @col._move = @col.addCycle 1, -1, =>
-            @col.each (elem) =>
+        DD(".child").drawTile DD("!canvas")
+        DD("#butterfly")._move = DD("#butterfly").addCycle 1, -1, =>
+            DD("#butterfly").each (elem) =>
                 elem.move -2, 0
                 if elem.square.xx <= 0
                     elem.killTile()
-            if @child then @col.squareCollision(@child.square, (elem) =>
+            DD("#butterfly").squareCollision(DD(".child"), (elem) =>
                 elem.killTile()
             )
     childhood.cosmos = () ->
-        app.canvas.clearEachFrame()
-        @btree.slideTo 800, 800, 30
-        @ltree.slideTo 0, -500, 30
-        @earth.slideTo 0, 800, 30
-        @sky.slideTo 0, -800, 35, =>
-            @sky.addTexture sky_tile, app.decorSpace
-            @btree.addTexture big_tree_tile, app.decorSpace
-            @ltree.addTexture little_tree_tile, app.decorSpace
-            @ltree.animateTexture 4, 0, 1, -1
-            @sky.animateTexture 2, 0, 1, -1
-            @btree.animateTexture 3, 0, 1, -1
-            @earth.addTexture moon_tile, app.decorSpace
-            @earth.animateTexture 5, 0, 1, -1
-            @sky.slideTo 0, 0, 40, =>
-                @earth.slideTo 0, 500, 40, =>
-                    @btree.slideTo 0, 175, 40, =>
-                        @ltree.slideTo 0, 353, 40, =>
-                            @spuf = new Node()
-                            @spuf.addSquare 120, 120, 120, 120
-                            @spuf.addTile spuf_tile, app.spuf
-                            @spuf.drawTile null, null, app.canvas
-                            @spuf.follow @child, 0, 20
-                            @spuf.animateTile 0, 5, true, 2, 6, (=> @spuf.kill())
-                            @child.addTile cosmos_tile, app.img
-                            @child._jumpYGravity = 0.5
-                            @col.killCycle @col._move
-                            @col.killCycle @col._spawn
-                            @col.killAll()
+        DD("!canvas").clearEachFrame()
+        DD(".btree").slideTo 800, 800, 30
+        DD(".ltree").slideTo 0, -500, 30
+        DD(".earth").slideTo 0, 800, 30
+        DD(".sky").slideTo 0, -800, 35, =>
+            DD(".sky").addTexture sky_tile, DD("@decorSpace")
+            DD(".btree").addTexture big_tree_tile, DD("@decorSpace")
+            DD(".ltree").addTexture little_tree_tile, DD("@decorSpace")
+            DD(".ltree").animateTexture 4, 0, 1, -1
+            DD(".sky").animateTexture 2, 0, 1, -1
+            DD(".btree").animateTexture 3, 0, 1, -1
+            DD(".earth").addTexture moon_tile, DD("@decorSpace")
+            DD(".earth").animateTexture 5, 0, 1, -1
+            DD(".sky").slideTo 0, 0, 40, =>
+                DD(".earth").slideTo 0, 500, 40, =>
+                    DD(".btree").slideTo 0, 175, 40, =>
+                        DD(".ltree").slideTo 0, 353, 40, =>
+                            DD(".spuf").addSquare(120, 120, 120, 120).addTile(spuf_tile, DD("@spuf")).drawTile(DD("!canvas")).follow(DD(".child"), 0, 20).animateTile(0, 5, true, 2, 6, (=> DD(".spuf").kill()))
+                            DD(".child").addTile cosmos_tile, DD("@img")
+                            DD(".child")._jumpYGravity = 0.5
+                            DD("#butterfly").killCycle DD("#butterfly")._move
+                            DD("#butterfly").killCycle DD("#butterfly")._spawn
+                            DD("#butterfly").killAll()
     childhood.veto = () ->
         @btree.slideTo 800, 800, 30
         @ltree.slideTo 0, -500, 30
@@ -424,7 +390,7 @@
     text = [{
         exec: => childhood.start(),
         print: true,
-        sleep: 250,
+        sleep: 25,
         tmpSleep: 25,
         txt: "CV César LEBLIC\n2012",
         x: 400,
@@ -770,11 +736,11 @@
         }
     ]
 
-    app.loadImages [{name: "img", src: "img/child.png"},
+    DD.loadImages [{name: "img", src: "img/child.png"},
         {name: "decor", src: "img/decor-child.png"},
         {name: "spuf", src: "img/spuf.png"},
         {name: "decorSpace", src: "img/decor-space.png"},
         {name: "decorVeto", src: "img/decor-veto.png"},
         {name: "decorChute", src: "img/decor-chute.png"}], =>
-            reader = new Reader text, app.canvas
+            reader = new Reader text, DD("!canvas")
             reader.read()
