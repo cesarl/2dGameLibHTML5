@@ -413,10 +413,10 @@ Update = (function() {
   Update.prototype.step = function() {
     this.elapsed++;
     this.totalElapsed += this.elapsed;
-    if (this.elapsed >= this.tickRate) {
+      if (this.elapsed >= this.tickRate) {
       this.elapsed = 0;
       this.turn++;
-      if (typeof this.callback === "function") {
+      if (typeof this.callback === "function" && !this.ended) {
         this.callback();
       }
     }
@@ -432,6 +432,7 @@ Update = (function() {
   Update.prototype.stop = function() {
     if (this.subHandler) {
       DD.unsubscribe(this.subHandler);
+	this.ended = true
     }
     return this.active = false;
   };
@@ -568,35 +569,34 @@ Texture = (function() {
 
   Texture.prototype.buildPart = function(x, y) {
     var part;
+//      console.log(x, y)
     part = {
       x: x,
       y: y,
       xx: (this.stretchW || this.imgW) + (x - this.w),
-      yy: (this.stretchH || this.imgH) + y,
+      yy: (this.stretchH || this.imgH) + (y - this.h),
       img: this.img
     };
     return this.col.push(part);
   };
 
   Texture.prototype.calc = function() {
-    var x, y, _results;
+      var x, y, _results, sensx, sensy;
+      if (this.x < 0)
+	  sensx = -1;
+      else
+	  sensx = 1;
+      if (this.y < 0)
+	  sensy = -1;
+      else
+	  sensy = 1;
     this.col = [];
-    if (this.x < 0) {
-      this.sx = -1;
-    } else {
-      this.sx = 1;
-    }
-    if (this.y < 0) {
-      this.sy = -1;
-    } else {
-      this.sy = 1;
-    }
     y = 0;
     _results = [];
-    while (Math.abs(y * (this.stretchH || this.imgH) - Math.abs(this.y)) < this.h) {
+      while (Math.abs(y * (this.stretchH || this.imgH) - Math.abs(this.y)) < this.h) {
       x = 0;
-      while (Math.abs(x * (this.stretchW || this.imgW) - Math.abs(this.x)) < this.w) {
-        this.buildPart((x * this.sx) * (this.stretchW || this.imgW) - this.x, (y * this.sy) * (this.stretchW || this.imgH) - this.y);
+	  while (Math.abs(x * (this.stretchW || this.imgW) - Math.abs(this.x)) < this.w) {
+              this.buildPart((x * sensx) * (this.stretchW || this.imgW) - this.x, (y * sensy) * (this.stretchW || this.imgH) - this.y);
         x++;
       }
       _results.push(y++);
@@ -604,13 +604,12 @@ Texture = (function() {
     return _results;
   };
 
-  Texture.prototype.animate = function(vx, vy, speed, expiration, canvas, callback) {
+  Texture.prototype.animate = function(vx, vy, speed, expiration, callback) {
     var _this = this;
     this.vx = vx;
     this.vy = vy;
     this.speed = speed;
     this.expiration = expiration;
-    this.canvas = canvas;
     if (this.anim) {
       this.anim.stop();
     }
@@ -692,20 +691,6 @@ Square = (function() {
   Square.prototype.moveToY = function(y) {
     this.y = y;
     this.yy = this.y + this.h;
-    this.moveFollowers();
-    return this;
-  };
-
-  Square.prototype.moveX = function(x) {
-    this.x += x;
-    this.xx += x;
-    this.moveFollowers();
-    return this;
-  };
-
-  Square.prototype.moveY = function(y) {
-    this.y += y;
-    this.yy += y;
     this.moveFollowers();
     return this;
   };
@@ -1037,8 +1022,8 @@ Node = (function() {
     return this;
   };
 
-  Node.prototype.animateTexture = function(x, y, speed, expiration) {
-    this.texture.animate(x, y, speed, expiration);
+    Node.prototype.animateTexture = function(x, y, speed, expiration, callback) {
+    this.texture.animate(x, y, speed, expiration, callback);
     return this;
   };
 

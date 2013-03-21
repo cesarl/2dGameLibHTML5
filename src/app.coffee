@@ -1,24 +1,22 @@
 class Pubsub
     constructor: ->
         @cache = {}
+        @type = "Pubsub"
     publish: (topic, args) ->
         if @cache[topic]
             @cache[topic].forEach (obj, i) =>
                 obj.callback.apply @, args || []
-    subscribe: (topic, callback, weight) ->
-        if not @cache[topic] then  @cache[topic] = []
+    subscribe: (topic, callback, weight = 50) ->
+        if not @cache[topic] then @cache[topic] = []
         elem = {}
         elem.callback = callback
-        elem.weight = typeof weight is "number" and weight >= 0 ? weight : @cache[topic].length
+        elem.weight = weight
         elem.topic = topic
-        len = @cache[topic].length
-        @cache[topic].forEach (obj, i) =>
-            if i > weight then stop
-            len = i
-        if len isnt @cache[topic].length - 1
-            @cache[topic].splice len, 0, elem
-        else
-            @cache[topic].push elem
+        for obj, i in @cache[topic]
+            if obj.weight > elem.weight
+                @cache[topic].splice i, 0, elem
+                return elem
+        @cache[topic].push elem
         elem
     unsubscribe: (handle) ->
         name = handle.topic
@@ -26,12 +24,9 @@ class Pubsub
         @cache[name].forEach (obj, i) =>
             if obj.callback is handle.callback then @cache[name].splice i, 1
 
-class App
-    stopCycle: ->
-        @cycleRunning = false
-
 class Event
     constructor: (@domElem = window, @en = false) ->
+        @type = "Event"
         @up = @down = @left = @right = @space = @esc = @other = @mousedown = @mouseup = false
         @domElem.addEventListener "mousedown", (e) =>
             @mousedown = true
@@ -67,7 +62,8 @@ class Event
 
 class Canvas
     constructor: (@canvasId = "canvas", @w = 800, @h = 600) ->
-        @subHandler = DD.subscribe("raf:frame:tick", => @clear())
+        @type = "Canvas"
+        @subHandler = DD.subscribe("raf:frame:tick", (=> @clear()), 0)
         tmpCanvas = document.getElementById @canvasId
         if tmpCanvas then @canvas = tmpCanvas else
             @canvas = document.createElement("canvas")
@@ -178,25 +174,18 @@ class Canvas
             window.removeEventListener "resize", @_resizeFullScreenFn, false
         @
 
-class Img
-    constructor: (src, callback, args...) ->
-        img = new Image()
-        if src then img.src = src else img.src = "missing.png"
-        img.addEventListener "load", (e) =>
-            callback?()
-        return img
-
 class Update
-    constructor: (@tickRate = 60, @expiration = -1, @callback, @callbackEnd) ->
+    constructor: (@tickRate = 60, @expiration = -1, @callback, @callbackEnd, index) ->
+        @type = "Update"
         @elapsed = 0
         @turn = 0
         @active = false
         @ended = false
-        @start()
+        @start(index)
         @
-    start: ->
+    start: (index) ->
         @active = true
-        @subHandler = DD.subscribe("raf:frame:tick", => @step())
+        @subHandler = DD.subscribe("raf:frame:tick", (=> @step()), index)
     step: ->
         @elapsed++
         @totalElapsed += @elapsed
@@ -214,6 +203,7 @@ class Update
 
 class Tile
     constructor: (@_plain, @img) ->
+        @type = "Tile"
         @animationName = false
         @update(@_plain, @img)
     update: (@_plain, @img) ->
@@ -257,6 +247,7 @@ class Tile
 
 class Texture
     constructor: (@_plain, @img) ->
+        @type = "Texture"
         @animationName = false
         @update(@_plain, @img)
     update: (@_plain, @img) ->
@@ -290,11 +281,13 @@ class Texture
         @col.push part
     calc: ->
         @col = []
+        if @x < 0 then @sx = -1 else @sx = 1
+        if @y < 0 then @sy = -1 else @sy = 1
         y = 0
-        while y * (@stretchH or @imgH) - @y < @h
+        while Math.abs(y * (@stretchH or @imgH) - Math.abs(@y)) < @h
             x = 0
-            while x * (@stretchW or @imgW) - @x < @w
-                @buildPart x * (@stretchW or @imgW) - @x, y * (@stretchW or @imgH) - @y
+            while Math.abs(x * (@stretchW or @imgW) - Math.abs(@x)) < @w
+                @buildPart (x * @sx) * (@stretchW or @imgW) - @x, (y * @sy) * (@stretchW or @imgH) - @y
                 x++
             y++
 
@@ -313,6 +306,7 @@ class Texture
 
 class Square
     constructor: (@w, @h, @x, @y) ->
+        @type = "Square"
         @resize(@w, @h)
         @
     resize: (@w, @h) ->
@@ -338,6 +332,16 @@ class Square
         @
     moveToY: (@y) ->
         @yy = @y + @h
+        @moveFollowers()
+        @
+    moveX: (x) ->
+        @x += x
+        @xx += x
+        @moveFollowers()
+        @
+    moveY: (y) ->
+        @y += y
+        @yy += y
         @moveFollowers()
         @
     moveCenter: (x, y) ->
@@ -440,6 +444,7 @@ class Square
         @
 class Node
     constructor: (@name) ->
+        @type = "Node"
         @tile = @texture = @square = false
         @
     addTile: (_plain, img) ->
@@ -447,7 +452,7 @@ class Node
             @tile.update _plain, img
         @
     addTexture: (_plain, img) ->
-        if @texture is false then @texture = new Texture(_plain, img) else
+        if not @texture then @texture = new Texture(_plain, img) else
             @texture.update _plain, img
         @
     killTile: () ->
@@ -490,11 +495,11 @@ class Node
     addSquare: (w = 0, h = 0, x = 0, y = 0) ->
         @square = new Square w, h, x, y
         @
-    drawTile: (canvas, tile = @tile, square = @square) ->
-        @_drawTile = new Update(1, -1, (() => @drawImgSquare(canvas, tile, square)))
+    drawTile: (canvas, zindex) ->
+        @_drawTile = new Update(1, -1, (() => @drawImgSquare(canvas, @tile, @square)))
         @
-    drawTexture: (canvas, texture = @texture, square = @square) ->
-        @_drawTexture = new Update(1, -1, (() => @drawImgColSquare(canvas, texture, square)))
+    drawTexture: (canvas, zindex) ->
+        @_drawTexture = new Update(1, -1, (() => @drawImgColSquare(canvas, @texture, @square)), null, zindex)
         @
     drawImgColSquare: (canvas, texture, square) ->
         i = 0
@@ -523,6 +528,8 @@ class Node
         @
     move: (x, y) ->
         @square.move x, y
+    moveTo: (x, y) ->
+        @square.moveTo x, y
     shake: (intensity, length, callback) ->
         @square.shake(intensity, length, null, null, null, callback)
     jumpY: (force, gravity, callback) ->
@@ -543,6 +550,7 @@ class Node
         @
 class Collection
     constructor: (@name) ->
+        @type = "Collection"
         @col = []
         @
     add: (objects...) ->
@@ -585,6 +593,7 @@ class Collection
 
 class Reader
     constructor: (@data, @canvas) ->
+        @type = "Reader"
         @i = 0
         @
     next: () ->
@@ -613,6 +622,7 @@ class Reader
     COL_ctx = {}
     COL_evt = {}
     COL_col = {}
+    COL_spt = {}
 
 
 
@@ -637,10 +647,11 @@ class Reader
         else if l is '.'
             gsNode(sel, params)
         else if l is '@'
-            gImg(sel, params)
+            gImg(sel)
         else if l is '#'
             gsCol(sel, params)
-
+        else if l is '|'
+            gSpt(sel)
 
 
     #
@@ -660,17 +671,23 @@ class Reader
         if not COL_node[name]
             COL_node[name] = new Node(name);
         COL_node[name]
-    gImg = (name, params) ->
+    gImg = (name) ->
         COL_img[name]
     gsCol = (name, params) ->
         if not COL_col[name]
             COL_col[name] = new Collection(name);
         COL_col[name]
-
+    gSpt = (name) ->
+        COL_spt[name]
 
     cycle = ->
         DD.publish("raf:frame:tick")
-
+    imgLoader = (src, callback, args...) ->
+        img = new Image()
+        if src then img.src = src else img.src = "missing.png"
+        img.addEventListener "load", (e) =>
+            callback?()
+        return img
 
     facade = (selectors, params) ->
         p = Array.prototype.slice.call(arguments);
@@ -683,8 +700,11 @@ class Reader
         facade.loadImage collection, 0, callback
     ####### loadImage
     facade.loadImage = (collection, index, callback) ->
-        COL_img[collection[index].name] = new Img collection[index].src, => if collection[++index] then facade.loadImage(collection, index, callback) else callback()
-    ####### startCycle
+        COL_img[collection[index].name] = imgLoader collection[index].src, => if collection[++index] then facade.loadImage(collection, index, callback) else callback()
+    ####### cycle
+    facade.stopCycle = (isStats = false) ->
+        _cycleRunning = false
+        @
     facade.startCycle = (isStats = false) ->
         _cycleRunning = true
         if isStats
@@ -711,10 +731,26 @@ class Reader
     facade.kill = (selectors) ->
         if selectors and typeof selectors is "string"
             col = parseSelectors(selectors)
-            console.log col
+            col.killAll()
+            if col.type is "Canvas"
+                delete COL_ctx[name]
+            else if col.type is "Event"
+                delete COL_evt[name]
+            else if col.type is "Node"
+                delete COL_node[name]
+            else if col.type is "Image"
+                delete COL_img[name]
+            else if col.type is "Collection"
+                delete COL_col[name]
+
     ######## newNode
     facade.newNode = () ->
         new Node()
-
+    facade.buildSprite = (list, callback, index = 0) ->
+        COL_spt[list[index].name] = list[index]
+        if list[++index]
+            facade.buildSprite(list, callback, index)
+        else if callback
+            callback()
     _global.DD = _global[_name] = facade
 )(document)
